@@ -1,28 +1,61 @@
 import requests
+import asyncio
+import aiohttp
+import aioconsole
 from config import API_KEY
 
-def get_info(country):
+
+async def preload_country_data(session, country):
     api_url_country = f'https://api.api-ninjas.com/v1/country?name={country}'
+    async with session.get(api_url_country, headers={'X-Api-Key': API_KEY}) as response:
+        if response.status == 200:
+            data = await response.json()
+            return data[0] if data else None
+        return None
+    
+async def preloaded_city_data(session, city):
+    api_url_city = f'https://api.api-ninjas.com/v1/city?name={city}'
+    async with session.get(api_url_city, headers={'X-Api-Key': API_KEY}) as response:
+        if response.status == 200:
+            data = await response.json()
+            return data[0] if data else None
+        return None
 
-    response = requests.get(api_url_country, headers={'X-Api-Key': API_KEY})
+async def get_info():
 
+    countries = ["United States", "Russia", "Germany", "Japan", "France", "South Africa", "Brazil", "Argentina", "Vietnam", "Egypt"]
 
-    if response.status_code == 200:
-        data = response.json()
-        if data:
-            country_data = data[0]
+    prelodaded_data = {}
 
-            name = country_data.get("name", "No info")
-            region = country_data.get("region", "No info")
-            capital_сountry = country_data.get("capital", "No info")
-            gdp = country_data.get("gdp", "No info")
-            currency = country_data.get("currency", "No info")
-            life_exp = country_data.get("life_expectancy_male", "No info")
-            unemployment = country_data.get("unemployment", "No info")
+    async with aiohttp.ClientSession() as session:
+        get_data = [preload_country_data(session,country) for country in countries]
+        result = await asyncio.gather(*get_data)
+
+        for country, data in zip(countries, result):
+            if data:
+                prelodaded_data[country] = data
+                print(f"Данные о {country} получены заранее")
+
+        user_country = await aioconsole.ainput("\nВведите название страны: ")
+
+        country_data = None
+        if user_country in prelodaded_data:
+            print(f"Используем заранее загруженные данные о стране {user_country}")
+            country_data = prelodaded_data[user_country]
+        else:
+            print(f"Загружаем данные о стране {user_country}")
+            country_data = await preload_country_data(session, user_country)
+
+        if country_data:
+
+            name = country_data.get("name")
+            region = country_data.get("region")
+            capital_сountry = country_data.get("capital")
+            gdp = country_data.get("gdp")
+            currency = country_data.get("currency")
+            life_exp = country_data.get("life_expectancy_male")
+            unemployment = country_data.get("unemployment")
             
-            capital_short = capital_сountry.split(",")
-            capital_city = capital_short[0]
-
             print("\nИнформация о стране: ")
             print(f"Название: {name}")
             print(f"Регион: {region}")
@@ -33,46 +66,25 @@ def get_info(country):
             print(f"Деньги: Валюта {currency.get("code")}, Название {currency.get("name")}")
 
 
-            if capital_city:
-                get_info_capital(capital_city, name)
-            else:
-                print("No data about capital")
+            if capital_сountry:
+                capital_short = capital_сountry.split(",")
+                capital_city = capital_short[0]
+                city_data = await preloaded_city_data(session, capital_city)
 
+                if city_data:
+                    city_name = city_data.get("name")
+                    city_latitude = city_data.get("latitude")
+                    city_population = city_data.get("population")
+
+
+                    print(f"\nИнформация о столице страны: {user_country}")
+                    print(f"Название: {city_name}")
+                    print(f"Широта: {city_latitude}")
+                    print(f"Популяция: {city_population}")
+                else:
+                    print(f"Нет информации о столице {capital_сountry}")
         else:
-            print("error")
-    else:
-        print("error")
+            print(f"Нет информации о стране {user_country}")
 
 
-
-
-def get_info_capital(capital_city, country_name):
-    api_url_city = f"https://api.api-ninjas.com/v1/city?name={capital_city}"
-
-    response_city = requests.get(api_url_city, headers={'X-Api-Key': API_KEY})
-
-    if response_city.status_code == 200:
-        data_city = response_city.json()
-        if data_city:
-            city_data = data_city[0]
-
-            city_name = city_data.get("name", "No info")
-            city_latitude = city_data.get("latitude", "No info")
-            city_population = city_data.get("population", "No info")
-
-
-            print(f"\nИнформация о столице: {country_name}")
-            print(f"Название: {city_name}")
-            print(f"Широта: {city_latitude}")
-            print(f"Популяция: {city_population}")
-        else:
-            print("error")
-    else:
-        print("error")
-
-
-country = input("\nВведите название страны: ")
-get_info(country)
-
-
-
+asyncio.run(get_info())
